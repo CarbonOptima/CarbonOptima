@@ -143,6 +143,16 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     const factor=fresh.config.factor,price=fresh.config.price;
     return {before,after,saved:delta,daily,co2Before:factor===null?null:before*factor,co2After:factor===null?null:after*factor,co2Saved:factor===null?null:delta*factor,moneyBefore:price===null?null:before*price,moneyAfter:price===null?null:after*price,moneySaved:price===null?null:delta*price,percent:before?delta/before*100:null,count:days.filter(Boolean).length,selected:!!plan};
   }
+  function compareScenario(data,ids,activeDays){
+    const fresh=calculate(data.rows,data.config),unique=[...new Set(ids)],used=new Set();
+    const plans=unique.map(id=>{const p=fresh.plans.find(p=>p.id===id);if(!p)throw new Error('Phương án không còn hợp lệ; hãy chọn lại.');
+      p.rowIds.forEach(id=>{if(used.has(id))throw new Error('Hai phương án tác động cùng dòng thiết bị. Bỏ phương án cũ trước khi thêm phương án khác.');used.add(id);});return p;});
+    let rows=fresh.rows;plans.forEach(p=>{rows=applyPlan(rows,p);});
+    const sum=(rs,active)=>rs.filter(r=>r.daysPerMonth!==0&&(active||r.critical||r.priority==='high')).reduce((n,r)=>n+r.kwh,0);
+    const days=Array.from({length:7},(_,i)=>!!activeDays[i]),daily=days.map(active=>{const before=sum(fresh.rows,active),after=sum(rows,active);return {before,after,saved:Math.max(0,before-after)};});
+    const before=daily.reduce((n,d)=>n+d.before,0),after=daily.reduce((n,d)=>n+d.after,0),saved=Math.max(0,before-after),f=fresh.config.factor,t=fresh.config.price;
+    return {before,after,saved,daily,co2Before:f===null?null:before*f,co2After:f===null?null:after*f,co2Saved:f===null?null:saved*f,moneyBefore:t===null?null:before*t,moneyAfter:t===null?null:after*t,moneySaved:t===null?null:saved*t,percent:before?saved/before*100:null,count:days.filter(Boolean).length,selected:plans.length>0};
+  }
   // Reviewed offline knowledge base: practice guidance never supplies a savings factor.
   const solutionSources={
     doe:{title:'DOE · Energy Saver Guide 2022',year:'2022',url:'https://www.energy.gov/sites/default/files/2022-08/energy-saver-guide-2022.pdf',scope:'Khuyến nghị kỹ thuật hộ gia đình tại Mỹ; không dùng giá, tỷ lệ tiết kiệm hoặc chứng nhận Mỹ làm dữ liệu Việt Nam.',checked:'2026-10-27'},
@@ -195,7 +205,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       return tier(a.c)-tier(b.c)||(pa&&pb?Number(pb.costValue===0)-Number(pa.costValue===0)||pb.savedKwh-pa.savedKwh||(pa.costValue??Infinity)-(pb.costValue??Infinity):0)||a.index-b.index;
     }).map(({c})=>c);
   }
-  const api={normalize,settings,energy,calculate,monthlyEnergy,daysInMonth,recommendations,applyPlan,compareWeek,solutionCatalog,prioritizeSolutions,solutionRules,solutionSources,deviceGroup,groupLabels};
+  const api={normalize,settings,energy,calculate,monthlyEnergy,daysInMonth,recommendations,applyPlan,compareWeek,compareScenario,solutionCatalog,prioritizeSolutions,solutionRules,solutionSources,deviceGroup,groupLabels};
   if(typeof module!=='undefined')module.exports=api;
   root.CarbonModel=api;
 })(typeof window==='undefined'?globalThis:window);
@@ -276,10 +286,13 @@ function setupReportLayout(){
   byId('metricKwh').closest('.metric').querySelector('.metric-val').innerHTML='<span>Điện năng / ngày mẫu</span><span aria-hidden="true">ϟ</span>';
   overview.querySelectorAll('.metric-tag').forEach(el=>el.remove());
   const insight=document.createElement('section');insight.id='keyFindings';insight.className='key-findings section';insight.innerHTML='<div class="section-k">02 / ĐIỂM CẦN CHÚ Ý</div><h2>Bắt đầu tìm hiểu từ đây.</h2><div id="findingsGrid" class="findings-grid"></div><p class="small">Tiêu thụ nhiều chưa có nghĩa là lãng phí. Kiểm tra nhu cầu và điều kiện sử dụng trước khi cắt giảm.</p>';overview.after(insight);
-  const solutions=byId('plansGrid').closest('section');solutions.id='solutionsSection';solutions.className='section report-solutions';solutions.querySelector('.section-k').textContent='03 / GIẢI PHÁP';solutions.querySelector('h2').textContent='Chọn một thay đổi phù hợp.';
+  const solutions=byId('plansGrid').closest('section');solutions.id='solutionsSection';solutions.className='section report-solutions';solutions.querySelector('.section-k').textContent='03 / GIẢI PHÁP';solutions.querySelector('h2').textContent='Chọn các thay đổi phù hợp.';
+  const solutionIntro=solutions.querySelector('.small');if(solutionIntro)solutionIntro.textContent='Mở nhóm để xem phạm vi. Thêm phương án vào kịch bản rồi nhập thông số và xem hướng dẫn thực hiện.';
   const selected=byId('selectedPlanBox'),guide=byId('dailyPlanGuide');
   const simulation=document.createElement('section');simulation.id='simulationSection';simulation.className='section report-simulation';simulation.innerHTML='<div class="section-k">04 / MÔ PHỎNG HIỆU QUẢ</div><h2>Thấy tác động trước khi thực hiện.</h2>';solutions.after(simulation);simulation.append(selected);
   const action=document.createElement('section');action.id='actionSection';action.className='section report-action';action.innerHTML='<div class="section-k">05 / HƯỚNG DẪN & KẾ HOẠCH</div><h2>Biến lựa chọn thành việc làm.</h2><p id="actionEmpty" class="empty-action">Chọn phương án để xem các bước thực hiện cho đúng thiết bị.</p>';simulation.after(action);action.append(guide);
+  const picker=document.createElement('label');picker.className='routine-field';picker.innerHTML='Xem checklist cho phương án<select id="actionPlanPicker" aria-label="Phương án cần thực hiện"></select>';guide.before(picker);
+  byId('actionPlanPicker').onchange=e=>{simulationState.planId=e.target.value;refreshImpact();};
   guide.querySelector('.section-k').textContent='PHƯƠNG ÁN ĐANG CHỌN';guide.querySelector('.guide-heading').id='actionPlanTitle';guide.querySelector('.routine-intro').textContent='Đánh dấu việc đã làm. Hoàn thành checklist không xác nhận rằng bạn đã tiết kiệm được điện hoặc CO₂e như mô phỏng.';
   const controls=guide.querySelector('.routine-controls'),timeFields=document.createElement('div');timeFields.id='routineTimeFields';timeFields.className='routine-time-fields';timeFields.hidden=true;
   timeFields.append(byId('routineStart').closest('label'),byId('routineEnd').closest('label'));
@@ -347,6 +360,7 @@ function renderTable(){
     '</tr>';
   }).join('');
 }
+let scopeArea='',scopeType='',scopeKind='',chosenGuides=new Set(),openGroups=new Set();
 let solutionFilter='all',solutionSort='default',tableGroup=null,groupPeriod='day',showAllSolutions=false;
 let updateSolutionVisibility=()=>{};
 function sourceDetails(c){return '<a href="'+escapeHtml(c.source.url)+'" target="_blank" rel="noopener noreferrer">'+escapeHtml(c.source.title)+'</a> · '+escapeHtml(c.pages)+'<p>'+escapeHtml(c.source.scope)+'</p><p>Đối chiếu: '+c.source.checked+'. '+escapeHtml(c.confidence)+'</p>';}
@@ -372,6 +386,15 @@ function renderSolutionLibrary(openId){
   const catalog=CarbonModel.prioritizeSolutions(CarbonModel.solutionCatalog(data.rows,data.plans),data.plans),plans=new Map(data.plans.map(p=>[p.id,p]));
   wrap.innerHTML='<div class="solution-toolbar"><label>Lọc giải pháp<select id="solutionFilter"><option value="all">Tất cả</option><option value="no-purchase">Không cần mua mới</option><option value="quantitative">Có thể tính tiết kiệm</option><option value="invest">Cần đầu tư / thay thế</option><option value="maintenance">Kiểm tra / bảo dưỡng</option><option value="school">Khu vực trường học đã khai báo</option><option value="home">Khu vực gia đình đã khai báo</option></select></label><label>Sắp xếp<select id="solutionSort"><option value="default">Ưu tiên dễ bắt đầu</option><option value="saving">kWh giảm cao trước (khi đủ dữ liệu)</option><option value="cost">Chi phí mua/lắp thấp trước (khi biết)</option></select></label></div><details class="ranking-explanation"><summary>Vì sao các giải pháp này được xếp trước?</summary><p>Chỉ xét phương án phù hợp và vượt qua điều kiện bảo vệ thiết bị. Ưu tiên phương án đủ dữ liệu; trong nhóm này, phương án không cần mua mới đứng trước, tiếp đến kWh giảm cao hơn và chi phí đã biết thấp hơn khi bằng nhau. Khi thiếu dữ liệu: khảo sát giờ bật dư, hướng dẫn thực hành, rồi phương án cần thông số mua mới/điện chờ. Đây là thứ tự tham khảo, không phải kết luận phương án tốt nhất.</p></details><div class="selection-brief" id="selectionBrief" role="status"><div><span class="small">LỰA CHỌN CỦA BẠN</span><strong id="briefTitle">Chưa chọn phương án</strong><p id="briefDescription">Mở hướng dẫn hoặc chọn phương án để bắt đầu.</p></div><a id="viewSimulation" class="btn btn-primary" href="#selectedPlanBox" hidden>Xem kết quả mô phỏng ↗</a></div><p id="solutionCount" role="status" class="small"></p><div id="solutionCards" class="solution-cards"></div><button id="showAllSolutions" class="btn btn-secondary show-solutions" type="button" aria-controls="solutionCards" aria-expanded="false">Xem tất cả giải pháp</button><details class="solution-comparison"><summary>So sánh các phương án đủ dữ liệu</summary><div class="table-wrap"><table id="solutionComparison"><thead><tr><th>Phương án / thiết bị</th><th>kWh giảm/ngày</th><th>CO₂e giảm/ngày</th><th>Tiền giảm/ngày</th><th>Chi phí mua/lắp</th><th>Hoàn vốn đơn giản</th></tr></thead><tbody></tbody></table></div><p class="small">So sánh độc lập, không cộng chồng. Cột chi phí chưa gồm công thực hiện nếu không được nhập trong báo giá. Hoàn vốn dùng lịch tháng mẫu × 12; giá điện là đơn giá bạn cấu hình.</p></details>';
   if(byId('comparisonLibrary'))byId('comparisonLibrary').append(wrap.querySelector('.solution-comparison'));
+  const toolbar=wrap.querySelector('.solution-toolbar');
+  for(const [id,label,options,current] of [
+    ['scopeArea','Phòng / khu vực',[...new Set(data.rows.map(r=>r.area))].map(v=>[v,v]),scopeArea],
+    ['scopeType','Nhóm thiết bị',Object.entries(CarbonModel.groupLabels),scopeType],
+    ['scopeKind','Loại giải pháp',[['schedule','Giảm giờ'],['standby','Điện chờ'],['replace','Thay thiết bị'],['guide','Hướng dẫn / khảo sát']],scopeKind]]){
+    const labelEl=document.createElement('label');labelEl.textContent=label;const select=document.createElement('select');select.id=id;
+    select.add(new Option('Tất cả',''));options.forEach(([value,text])=>select.add(new Option(text,value)));select.value=current;labelEl.append(select);toolbar.append(labelEl);
+  }
+  const builder=document.createElement('section');builder.className='scenario-builder';builder.innerHTML='<h3>Kịch bản đang chọn</h3><p>Ghép phương án trên các dòng thiết bị khác nhau. Cùng một dòng chỉ chọn một phương án; tất cả dùng chung lịch tuần. Hướng dẫn định tính không cộng vào mức tiết kiệm.</p><div id="scenarioItems"></div><p id="scenarioNotice" role="status"></p>';byId('selectionBrief').after(builder);
   const cards=byId('solutionCards');
   catalog.forEach((c,index)=>{
     const plan=plans.get(c.planId),r=data.rows.find(r=>r.id===c.rowId),article=document.createElement('article');article.className='solution-card';article.dataset.solution=c.id;article.dataset.state=c.status;
@@ -380,15 +403,27 @@ function renderSolutionLibrary(openId){
     const status=c.status==='quantitative'?'Có thể tính toán':c.status==='needs-data'?'Cần thêm thông tin':'Hướng dẫn tiết kiệm';
     const saved=plan?formatN(plan.savedKwh)+' kWh/ngày':'Chưa định lượng';
     article.innerHTML='<div class="solution-summary"><div class="solution-top"><span aria-hidden="true" class="solution-icon">'+c.icon+'</span><span class="solution-status">'+status+'</span><span class="solution-selected" hidden>Đang mô phỏng</span></div><h3 id="'+titleId+'">'+escapeHtml(c.title)+'</h3><p class="solution-device">'+r.qty+' × '+escapeHtml(c.device)+' · '+escapeHtml(c.area)+'</p><p>'+escapeHtml(c.purpose)+'</p><div class="solution-metrics"><strong>'+saved+'</strong></div><p class="solution-cost">'+escapeHtml(plan?(plan.costValue===0?'Không mua mới · chưa tính công':plan.costLabel):c.kind==='schedule'||/không (cần|nhất thiết) mua/i.test(c.cost)?'Không cần mua mới · công/dịch vụ chưa tính':'Chi phí: chưa có báo giá')+'</p><div class="solution-actions"><button type="button" class="disclosure-button" aria-expanded="false" aria-controls="'+bodyId+'" aria-label="Xem chi tiết: '+escapeHtml(c.title)+' — '+escapeHtml(c.device)+'">'+(c.kind==='guide'?'Xem hướng dẫn':'Xem chi tiết')+' <span aria-hidden="true">⌄</span></button>'+(c.kind!=='guide'?'<button type="button" class="choose-btn" data-select="'+escapeHtml(c.id)+'" '+(plan?'data-plan="'+escapeHtml(plan.id)+'"':'')+' aria-pressed="false">Chọn phương án</button>':'')+'</div><p class="card-selection-status small" role="status"></p></div><div class="solution-detail" id="'+bodyId+'" hidden><h4>Giải pháp này giúp gì?</h4><p>'+escapeHtml(c.purpose)+'</p><h4>Điều kiện áp dụng</h4><p>'+escapeHtml(c.condition)+' Bạn khai báo '+formatN(r.kwh)+' kWh/ngày cho dòng này.</p><h4>Các bước thực hiện</h4><ol class="solution-steps">'+solutionSteps(c,r)+'</ol><h4>Chi phí thực hiện & hiệu quả</h4><p>'+escapeHtml(c.cost)+'</p><p>'+escapeHtml(c.formula)+'</p>'+(plan?'<p>Ước tính giảm '+formatN(plan.savedKwh)+' kWh/ngày · '+formatN(plan.estimatedReductionKg)+' kg CO₂e/ngày · '+formatN(data.config.price===null?null:plan.savedKwh*data.config.price)+' đ/ngày. Hoàn vốn: '+(plan.payback===null?'Chưa đủ dữ liệu':plan.costValue===0?'Không cần mua mới':formatN(plan.payback)+' năm')+'.</p>':'<p>Chưa thể tính kWh/CO₂e/tiền giảm'+(c.status==='qualitative'?': cần số đo trước–sau trong điều kiện tương đương.':': bổ sung thông số kịch bản bên dưới.')+'</p>')+(c.fields.length?'<form class="solution-inputs" novalidate><h4>Thông số cho riêng phương án này</h4>'+c.fields.map(field=>'<label>'+escapeHtml(field.label)+'<input type="number" min="0" max="'+field.max+'" step="any" data-field="'+field.key+'" value="'+(r[field.key]??'')+'" '+(field.key==='unitCost'?'':'required')+' /></label>').join('')+'<button type="submit" class="btn btn-secondary">Áp dụng mô phỏng</button><p role="status" class="small"></p></form>':'')+'<h4>Lưu ý an toàn</h4><p>'+escapeHtml(c.safety)+'</p>'+((r.critical||r.priority==='high')?'<strong>Thiết bị này được bảo vệ: không đề xuất giảm giờ hoặc cắt nguồn.</strong>':'')+'<h4>Độ tin cậy & nguồn</h4>'+sourceDetails(c)+'</div>';
+    if(c.kind==='guide'){
+      const b=document.createElement('button');b.type='button';b.className='choose-btn';b.dataset.guide=c.id;b.textContent='Thêm hướng dẫn vào kế hoạch';article.querySelector('.solution-actions').append(b);
+      b.onclick=()=>{chosenGuides.has(c.id)?chosenGuides.delete(c.id):chosenGuides.add(c.id);refreshImpact();};
+    }
+    article.dataset.kind=c.kind;article.dataset.row=c.rowId;
     const toggle=article.querySelector('.disclosure-button'),body=article.querySelector('.solution-detail');
+    toggle.textContent='Xem phạm vi ⌄';
+    const preview=document.createElement('p');preview.className='scope-preview';preview.hidden=true;preview.textContent=c.condition+' '+(c.status==='quantitative'?'Đủ dữ liệu mô phỏng.':'Cần chọn để bổ sung dữ liệu hoặc xem hướng dẫn.')+' Chi phí: '+c.cost;article.querySelector('.solution-summary').append(preview);
     const sourceHeading=[...body.querySelectorAll('h4')].find(el=>el.textContent==='Độ tin cậy & nguồn');
     const evidence=document.createElement('details');evidence.className='solution-evidence';evidence.innerHTML='<summary>Độ tin cậy & nguồn tham khảo</summary>';
     while(sourceHeading.nextSibling)evidence.append(sourceHeading.nextSibling);sourceHeading.remove();body.append(evidence);
     const formPanel=body.querySelector('form');formPanel?.remove();
+    const number=formPanel?.querySelector('[data-field="reduceHours"]');
+    if(number){number.max=String(r.hours);const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max=String(r.hours);slider.step='any';slider.value=number.value||'0';slider.setAttribute('aria-label','Giảm giờ dùng mỗi ngày — '+r.name);slider.className='hours-slider';
+      const help=document.createElement('p');help.className='small';const sync=()=>{if(number.validity.valid)slider.value=number.value||'0';help.textContent='Hiện tại '+formatN(r.hours)+' giờ/ngày · giảm '+(number.value||'0')+' giờ/ngày · tối đa '+formatN(r.hours)+' giờ.';};
+      slider.oninput=()=>{number.value=slider.value;number.dispatchEvent(new Event('input',{bubbles:true}));};number.addEventListener('input',sync);number.before(slider);number.parentElement.after(help);sync();
+    }
     const guidance=document.createElement('div');guidance.className='solution-guidance';guidance.append(...body.childNodes);body.append(guidance);
     if(formPanel){const inputs=document.createElement('aside');inputs.className='scenario-input-panel';inputs.setAttribute('aria-label','Thông số mô phỏng');inputs.append(formPanel);body.append(inputs);}
 
-    const expand=()=>{const expanded=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(expanded));body.hidden=!expanded;article.classList.toggle('expanded',expanded);};
+    const expand=()=>{const expanded=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(expanded));preview.hidden=!expanded;};
     toggle.onclick=expand;
     article.onclick=event=>{if(!event.target.closest('.solution-summary')||event.target.closest('button,input,select,a,label,form,summary')||window.getSelection()?.toString())return;expand();toggle.focus();};
     if(c.id===openId){expand();}
@@ -396,6 +431,7 @@ function renderSolutionLibrary(openId){
       if(staleReport){refreshImpact();byId('selectionStatus').focus();return;}
       if(simulationState.pending===c.id){article.querySelector('form').requestSubmit();return;}
       if(plan){selectPlan(plan.id,false);return;}
+      if(data.plans.some(p=>scenarioIds.includes(p.id)&&p.rowIds.includes(c.rowId)&&p.kind!==c.kind)){byId('scenarioNotice').textContent='Dòng thiết bị này đã có phương án. Bỏ phương án cũ trong kịch bản trước khi thêm phương án khác.';return;}
       simulationState.phase='editing';simulationState.pending=c.id;
       if(body.hidden)expand();body.classList.add('entering-parameters');
       article.querySelector('.card-selection-status').textContent='Đang bổ sung dữ liệu; chưa chọn phương án này.';
@@ -404,7 +440,7 @@ function renderSolutionLibrary(openId){
     
     article.querySelector('form')?.addEventListener('input',()=>{
       simulationState.phase='editing';simulationState.pending=c.id;
-      if(simulationState.planId===c.planId)simulationState.planId=null;
+      scenarioIds=scenarioIds.filter(id=>id!==c.planId);if(simulationState.planId===c.planId)simulationState.planId=scenarioIds[0]||null;
       article.querySelector('.card-selection-status').textContent='Thông số chưa áp dụng. Nhấn Áp dụng mô phỏng khi nhập xong.';
       refreshImpact();
     });
@@ -412,7 +448,7 @@ function renderSolutionLibrary(openId){
       event.preventDefault();const form=event.currentTarget;
       if(staleReport){refreshImpact();return;}
       try{
-        const patch={};form.querySelectorAll('input').forEach(input=>{if(!input.checkValidity())throw new Error('Kiểm tra '+input.parentElement.firstChild.textContent);patch[input.dataset.field]=input.value;});
+        const patch={};form.querySelectorAll('input[data-field]').forEach(input=>{if(!input.checkValidity())throw new Error('Kiểm tra '+input.parentElement.firstChild.textContent);patch[input.dataset.field]=input.value;});
         const changed=CarbonModel.normalize({...r,...patch});
         if(c.kind==='schedule'&&changed.reduceHours<=0)throw new Error('Nhập số giờ giảm lớn hơn 0 và không vượt giờ đang dùng.');
         if(c.kind==='replace'&&changed.newPower>=r.power)throw new Error('Công suất mới phải nhỏ hơn công suất hiện tại để tạo phương án tiết kiệm.');
@@ -428,23 +464,32 @@ function renderSolutionLibrary(openId){
     cards.append(article);
   });
   const filter=()=>{
-    let shown=0;const articles=[...cards.children];
+    const articles=[...cards.querySelectorAll('.solution-card')];
     const areaContext=c=>{const a=c.area.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').toLowerCase();return /lop|truong|phong hoc|phong may|thu vien/.test(a)?'school':/gia dinh|phong khach|phong ngu|nha bep/.test(a)?'home':null;};
     const visible=c=>((solutionFilter==='school'||solutionFilter==='home')&&areaContext(c)===solutionFilter)||solutionFilter==='all'||solutionFilter==='quantitative'&&c.status==='quantitative'||solutionFilter==='no-purchase'&&(c.kind==='schedule'||/không (cần|nhất thiết) mua/i.test(c.cost))||solutionFilter==='invest'&&c.kind==='replace'||solutionFilter==='maintenance'&&/gioăng|vệ sinh|khảo sát/i.test(c.title);
     const order=new Map(catalog.map((c,i)=>[c.id,i]));
     articles.sort((a,b)=>{const ca=catalog[order.get(a.dataset.solution)],cb=catalog[order.get(b.dataset.solution)],pa=plans.get(ca.planId),pb=plans.get(cb.planId);return solutionSort==='saving'?(pb?.savedKwh??-1)-(pa?.savedKwh??-1):solutionSort==='cost'?(pa?.costValue??Infinity)-(pb?.costValue??Infinity)||order.get(ca.id)-order.get(cb.id):order.get(ca.id)-order.get(cb.id);});
-    const matches=articles.filter(article=>visible(catalog[order.get(article.dataset.solution)]));
-    let display=showAllSolutions?matches:matches.slice(0,4);
-    // Keep the card being edited visible without growing the four-card shortlist.
-    const pinned=matches.find(article=>article.dataset.solution===simulationState.pending||article.dataset.solution===openId);
-    if(!showAllSolutions&&pinned&&!display.includes(pinned))display=[...display.slice(0,3),pinned];
-    articles.forEach(article=>{article.hidden=!display.includes(article);cards.append(article);});
-    shown=display.length;
-    byId('solutionCount').textContent=matches.length?'Hiển thị '+shown+' / '+matches.length+' giải pháp'+(solutionFilter==='all'?'.':' phù hợp bộ lọc.'):(catalog.length?'Không có giải pháp phù hợp bộ lọc này.':'Chưa có thiết bị. Quay về trang nhập liệu để thêm thiết bị và phân tích.');
-    const more=byId('showAllSolutions');more.hidden=matches.length<=4;more.textContent=showAllSolutions?'Thu gọn danh sách':'Xem tất cả '+matches.length+' giải pháp';more.setAttribute('aria-expanded',String(showAllSolutions));
+    const matches=articles.filter(article=>{const c=catalog[order.get(article.dataset.solution)],r=data.rows.find(r=>r.id===c.rowId);return visible(c)&&(!scopeArea||c.area===scopeArea)&&(!scopeType||CarbonModel.deviceGroup(r)===scopeType)&&(!scopeKind||c.kind===scopeKind);});
+    const buckets=new Map();
+    const groupName=c=>c.kind==='schedule'?'Giảm thời gian bật không cần thiết':c.kind==='replace'?'So sánh thiết bị thay thế':c.kind==='standby'?'Giảm điện năng chờ':/điều hòa|quạt/i.test(c.title)?'Vận hành và bảo dưỡng làm mát':/đèn|chiếu sáng/i.test(c.title)?'Chiếu sáng theo nhu cầu':'Khảo sát và bảo dưỡng thiết bị';
+    matches.forEach(article=>{const c=catalog[order.get(article.dataset.solution)],name=groupName(c);if(!buckets.has(name))buckets.set(name,[]);buckets.get(name).push(article);});
+    cards.replaceChildren();articles.forEach(a=>{a.hidden=true;});
+    let index=0;
+    buckets.forEach((items,name)=>{
+      const group=document.createElement('details');group.className='solution-group';group.hidden=!showAllSolutions&&index++>=4;
+      group.open=openGroups.has(name)||items.some(a=>a.dataset.solution===simulationState.pending||scenarioIds.includes(a.querySelector('[data-plan]')?.dataset.plan)||chosenGuides.has(a.dataset.solution));
+      const cs=items.map(a=>catalog[order.get(a.dataset.solution)]),areas=[...new Set(cs.map(c=>c.area))],devices=[...new Set(cs.map(c=>c.device))],ready=cs.filter(c=>c.status==='quantitative').length;
+      group.innerHTML='<summary><strong>'+escapeHtml(name)+'</strong><span>'+items.length+' hạng mục · '+ready+' đủ dữ liệu · '+cs.filter(c=>c.status==='needs-data').length+' cần thông số · '+cs.filter(c=>c.status==='qualitative').length+' hướng dẫn định tính</span><small>'+escapeHtml(areas.slice(0,4).join(', '))+(areas.length>4?' và '+(areas.length-4)+' khu vực khác':'')+' · '+escapeHtml(devices.slice(0,3).join(', '))+'</small></summary>';
+      const list=document.createElement('div');list.className='group-items';items.forEach(a=>{a.hidden=false;list.append(a);});group.append(list);group.ontoggle=()=>{group.open?openGroups.add(name):openGroups.delete(name);};cards.append(group);
+    });
+    // Retain filtered cards for handlers and state, but keep them out of view.
+    const hidden=document.createElement('div');hidden.hidden=true;articles.filter(a=>!matches.includes(a)).forEach(a=>hidden.append(a));cards.append(hidden);
+    byId('solutionCount').textContent=buckets.size+' nhóm giải pháp · '+matches.length+' hạng mục phù hợp. Mở một nhóm để chọn phòng và thiết bị; chưa cộng tiết kiệm của cả nhóm.';
+    const more=byId('showAllSolutions');more.hidden=buckets.size<=4;more.textContent=showAllSolutions?'Thu gọn nhóm':'Xem tất cả '+buckets.size+' nhóm';more.setAttribute('aria-expanded',String(showAllSolutions));
 
   };
   updateSolutionVisibility=filter;
+  ['scopeArea','scopeType','scopeKind'].forEach(id=>byId(id).onchange=()=>{scopeArea=byId('scopeArea').value;scopeType=byId('scopeType').value;scopeKind=byId('scopeKind').value;filter();});
   byId('showAllSolutions').onclick=()=>{showAllSolutions=!showAllSolutions;filter();};
   byId('viewSimulation').onclick=event=>{event.preventDefault();goToReportSection('selectedPlanBox','selectionStatus');};
   byId('solutionFilter').value=solutionFilter;byId('solutionSort').value=solutionSort;
@@ -617,12 +662,14 @@ function routineSetup(){
 }
 // Disclosure is local to each card; selection and schedule are persisted independently.
 const savedSimulation=data.simulation||{};
+let scenarioIds=[...new Set(savedSimulation.planIds||[savedSimulation.planId])].filter(id=>data.plans.some(p=>p.id===id));
+chosenGuides=new Set(savedSimulation.guides||[]);
 const simulationState={planId:data.plans.some(p=>p.id===savedSimulation.planId)?savedSimulation.planId:null,phase:'idle',pending:null,message:''};
 let scheduleMode=['daily','weekdays','custom'].includes(savedSimulation.scheduleMode)?savedSimulation.scheduleMode:(Array.isArray(data.activeWeekDays)&&data.activeWeekDays.some(Boolean)?'custom':'');
 const activeWeekDays=Array.isArray(data.activeWeekDays)&&data.activeWeekDays.length===7?data.activeWeekDays.map(Boolean):Array(7).fill(false);
 let comparisonResult=null,comparisonReady=false;
 function persistSimulation(){
-  data.simulation={planId:simulationState.planId,scheduleMode,routine:{context:byId('routineContext').value,start:byId('routineStart').value,end:byId('routineEnd').value,timed:byId('useRoutineTimes').checked,day:routineCurrentDay}};data.activeWeekDays=[...activeWeekDays];
+  data.simulation={planId:simulationState.planId,planIds:scenarioIds,guides:[...chosenGuides],scheduleMode,routine:{context:byId('routineContext').value,start:byId('routineStart').value,end:byId('routineEnd').value,timed:byId('useRoutineTimes').checked,day:routineCurrentDay}};data.activeWeekDays=[...activeWeekDays];
   try{sessionStorage.setItem('carbon-result',JSON.stringify(data));}catch(e){byId('selectionStatus').textContent+=' Không lưu được phiên; lựa chọn có thể mất khi tải lại.';}
 }
 function goToReportSection(id,focusId=id){
@@ -631,6 +678,8 @@ function goToReportSection(id,focusId=id){
 function selectPlan(planId,shouldScroll=true){
   const plan=data.plans.find(p=>p.id===planId);
   if(!plan||staleReport)return;
+  try{CarbonModel.compareScenario(data,[...scenarioIds,plan.id],activeWeekDays);}catch(e){byId('scenarioNotice').textContent=e.message;return;}
+  if(!scenarioIds.includes(plan.id))scenarioIds.push(plan.id);
   simulationState.planId=plan.id;simulationState.phase='selected';simulationState.pending=null;simulationState.message='';
   refreshImpact();
   if(shouldScroll)goToReportSection('selectedPlanBox','selectionStatus');
@@ -667,33 +716,49 @@ function describeDay(i){
 }
 function renderCandidates(){renderSolutionLibrary();}
 function refreshImpact(){
-  if(staleReport){simulationState.planId=null;simulationState.phase='stale';}
+  if(staleReport){scenarioIds=[];chosenGuides.clear();simulationState.planId=null;simulationState.phase='stale';}
+  scenarioIds=scenarioIds.filter(id=>data.plans.some(p=>p.id===id));
+  if(!scenarioIds.includes(simulationState.planId))simulationState.planId=scenarioIds[0]||null;
   let plan=data.plans.find(p=>p.id===simulationState.planId);
   comparisonReady=false;comparisonResult=null;
   if(plan&&scheduleMode&&!staleReport){
     try{
-      comparisonResult=CarbonModel.compareWeek(data,plan.id,activeWeekDays);
+      comparisonResult=CarbonModel.compareScenario(data,scenarioIds,activeWeekDays);
       if(!comparisonResult.selected||![comparisonResult.before,comparisonResult.after,comparisonResult.saved].every(Number.isFinite))throw new Error('Không tính được phương án từ dữ liệu hiện tại.');
       comparisonReady=true;
     }catch(error){simulationState.planId=null;plan=null;simulationState.phase='error';simulationState.message=error.message;}
   }
   window.carbonSelectedPlanId=plan?.id||null;
   byId('selectedPlanBox').classList.add('show');
-  byId('selectedTitle').textContent=plan?'Đang mô phỏng: '+plan.title:'Chưa chọn phương án';
+  byId('selectedTitle').textContent=plan?'Đang mô phỏng kịch bản: '+scenarioIds.length+' phương án':'Chưa chọn kịch bản';
   byId('selectedDesc').textContent=plan?plan.desc:'Chọn một phương án tiết kiệm để xem mức phát thải trước và sau.';
   byId('selectedCost').textContent=plan?(plan.costValue===0?'Không mua mới; chưa tính công':plan.costLabel):'';
   const message=staleReport?'Dữ liệu thiết bị hoặc cấu hình đã thay đổi. Quay lại trang nhập liệu và nhấn phân tích để tạo kết quả mới.':!data.rows.length?'Chưa có thiết bị. Thêm thiết bị trước khi mô phỏng.':simulationState.phase==='error'?'Không áp dụng được thông số: '+simulationState.message+(plan?' Phương án đã chọn trước đó vẫn được giữ.':''):simulationState.phase==='editing'?'Đang bổ sung dữ liệu trong thẻ; nhấn Áp dụng mô phỏng khi nhập xong.'+(plan?' Kết quả hiện tại vẫn thuộc phương án đã chọn trước đó.':''):!plan?'Chọn một phương án tiết kiệm để xem mức phát thải trước và sau.':!scheduleMode?'Đã chọn phương án. Chọn lịch sử dụng trong 7 ngày để tính kết quả.':comparisonResult.count===0?'Lịch tùy chỉnh chưa có ngày hoạt động: phương án không có tác động trong 7 ngày này. Nhóm thiết yếu vẫn được tính.':comparisonResult.co2Saved===0&&comparisonResult.saved>0?'Điện năng giảm nhưng CO₂e bằng 0 vì hệ số phát thải được cấu hình bằng 0.':'Kết quả theo lịch mô phỏng đã chọn; chưa phải số đo sau thực hiện.';
   byId('selectionStatus').textContent=message;byId('selectedPlanBox').dataset.simulationState=staleReport?'stale':simulationState.phase==='error'?'error':simulationState.phase==='editing'?'editing':plan?(scheduleMode?'selected':'needs-schedule'):'idle';
   byId('simulationResults').hidden=!comparisonReady;
-  byId('clearPlan').disabled=!plan&&!simulationState.pending;
+  byId('clearPlan').disabled=!plan&&!simulationState.pending&&!chosenGuides.size;
   document.querySelectorAll('[data-select]').forEach(button=>{
-    const selected=!!plan&&button.dataset.plan===plan.id,card=button.closest('.solution-card');
+    const selected=scenarioIds.includes(button.dataset.plan),card=button.closest('.solution-card');
     button.disabled=staleReport;button.setAttribute('aria-pressed',String(selected));button.textContent=selected?'Đã chọn phương án':'Chọn phương án';
     card.classList.toggle('selected-solution',selected);card.querySelector('.solution-selected').hidden=!selected;
   });
-  byId('briefTitle').textContent=plan?plan.title:staleReport?'Dữ liệu nguồn đã thay đổi':'Chưa chọn phương án';
-  byId('briefDescription').textContent=plan?plan.desc+(comparisonReady?' Giảm dự kiến '+formatN(comparisonResult.saved)+' kWh / 7 ngày.':' Chọn lịch để xem tác động trong 7 ngày.'):simulationState.phase==='editing'?'Đang bổ sung thông số trong thẻ.':staleReport?'Phân tích lại từ trang nhập liệu.':'Chọn một phương án để so sánh với hiện trạng.';
+  byId('briefTitle').textContent=plan?'Kịch bản gồm '+scenarioIds.length+' phương án':staleReport?'Dữ liệu nguồn đã thay đổi':'Chưa chọn phương án';
+  byId('briefDescription').textContent=plan?'Các phương án đã chọn dùng chung lịch tuần.'+(comparisonReady?' Giảm dự kiến '+formatN(comparisonResult.saved)+' kWh / 7 ngày.':' Chọn lịch để xem tác động trong 7 ngày.'):simulationState.phase==='editing'?'Đang bổ sung thông số trong thẻ.':staleReport?'Phân tích lại từ trang nhập liệu.':'Thêm phương án vào kịch bản để so sánh với hiện trạng.';
+  const picked=data.plans.filter(p=>scenarioIds.includes(p.id)),totalCost=picked.some(p=>p.costValue===null)?null:picked.reduce((n,p)=>n+p.costValue,0);
+  byId('scenarioItems').replaceChildren();
+  [...picked.map(p=>({id:p.id,label:p.title+' · '+p.desc,guide:false})),...CarbonModel.solutionCatalog(data.rows,data.plans).filter(c=>chosenGuides.has(c.id)).map(c=>({id:c.id,label:c.title+' · '+c.area+' · hướng dẫn, chưa định lượng',guide:true}))].forEach(item=>{
+    const row=document.createElement('div');row.className='scenario-item';const text=document.createElement('span');text.textContent=item.label;const remove=document.createElement('button');remove.type='button';remove.className='btn btn-secondary';remove.textContent='Bỏ';remove.setAttribute('aria-label','Bỏ '+item.label);remove.onclick=()=>{if(item.guide)chosenGuides.delete(item.id);else scenarioIds=scenarioIds.filter(id=>id!==item.id);refreshImpact();};row.append(text,remove);byId('scenarioItems').append(row);
+  });
+  document.querySelectorAll('.solution-card').forEach(card=>{
+    const selected=scenarioIds.includes(card.querySelector('[data-plan]')?.dataset.plan)||chosenGuides.has(card.dataset.solution),editing=simulationState.pending===card.dataset.solution;
+    card.querySelector('.solution-detail').hidden=!(selected||editing);card.classList.toggle('expanded',selected||editing);
+    const gb=card.querySelector('[data-guide]');if(gb){gb.textContent=selected?'Bỏ hướng dẫn khỏi kế hoạch':'Thêm hướng dẫn vào kế hoạch';gb.setAttribute('aria-pressed',String(selected));}
+  });
+  byId('selectedDesc').textContent=plan?'Các phương án độc lập trên dòng thiết bị khác nhau; cùng lịch tuần. Checklist bên dưới cho phương án vừa chọn: '+plan.title:'Chọn phạm vi và thêm phương án vào kịch bản.';
+  byId('selectedCost').textContent=plan?totalCost===null?'Chi phí kịch bản: chưa đủ báo giá':'Chi phí mua/lắp kịch bản: '+formatN(totalCost,0)+' đ':'';
   byId('viewSimulation').hidden=!plan;byId('selectionBrief').classList.toggle('has-selection',!!plan);updateSolutionVisibility();
+  const actionPicker=byId('actionPlanPicker');actionPicker.replaceChildren();picked.forEach(p=>actionPicker.add(new Option(p.title+' · '+p.desc,p.id)));actionPicker.value=plan?.id||'';actionPicker.closest('label').hidden=picked.length<2;
+  byId('actionEmpty').textContent=chosenGuides.size?'Hướng dẫn định tính đã chọn nằm trong nhóm giải pháp tương ứng; chưa có mức tiết kiệm xác minh.':'Chọn phương án để xem các bước thực hiện cho đúng thiết bị.';
   byId('dailyPlanGuide').hidden=!plan;byId('actionEmpty').hidden=!!plan;
   if(plan){byId('savingHint').textContent=plan.savingHint;if(activeWeekDays.some(Boolean)&&!activeWeekDays[routineCurrentDay])routineCurrentDay=activeWeekDays.findIndex(Boolean);renderDailyRoutine(plan);}
   // Clear outputs on every transition: a hidden old chart must never carry a current result.
@@ -713,8 +778,8 @@ function refreshImpact(){
     byId('weekBefore').previousElementSibling.textContent=data.energyOnly?'Điện trước / 7 ngày':'Phát thải trước / 7 ngày';
     byId('weekAfter').previousElementSibling.textContent=data.energyOnly?'Điện sau / 7 ngày':'Phát thải sau / 7 ngày';
     byId('simulationAssumptions').textContent='Giả định: '+(scheduleMode==='daily'?'hằng ngày':scheduleMode==='weekdays'?'thứ Hai–thứ Sáu':'tùy chỉnh')+' ('+result.count+'/7 ngày); lặp lịch dùng/ngày đã nhập, giữ nhóm thiết yếu cả ngày nghỉ. '+(data.energyOnly?'Chưa có hệ số CO₂e; biểu đồ dùng kWh.':'CO₂e = kWh × '+formatN(data.config.factor,8)+' kg/kWh.');
-    byId('planCostValue').textContent=plan.costValue===null?'Chưa có báo giá':plan.costValue===0?'Không mua mới; chưa tính công':formatN(plan.costValue,0)+' đ';
-    byId('investmentSummary').textContent=plan.savingHint;
+    byId('planCostValue').textContent=totalCost===null?'Chưa đủ báo giá':totalCost===0?'Không mua mới; chưa tính công':formatN(totalCost,0)+' đ';
+    byId('investmentSummary').textContent=scenarioIds.length===1?plan.savingHint:'Tổng chi phí đã nhập của kịch bản; chưa tính hoàn vốn gộp, lãi suất hoặc bảo trì.';
     byId('forecastTable').querySelector('tbody').innerHTML=data.forecastDays.map((d,i)=>{
       const day=result.daily[i];d.baseline=day.before*scale;d.planValues={[plan.id]:day.after*scale};
       return '<tr><th>'+escapeHtml(d.day)+'</th><td>'+(activeWeekDays[i]?'Có':'Nghỉ / chỉ thiết yếu')+'</td><td>'+formatN(day.saved,5)+'</td><td>'+formatN(day.before*scale,5)+'</td><td>'+formatN(day.after*scale,5)+'</td><td>'+formatN(day.saved*scale,5)+'</td></tr>';
@@ -745,7 +810,7 @@ function setupImpact(){
   byId('chartDay').innerHTML=data.forecastDays.map((d,i)=>'<option value="'+i+'">'+escapeHtml(d.day)+'</option>').join('');
   byId('chartDay').onchange=event=>describeDay(Number(event.target.value));
   const canvas=byId('planChart');canvas.onpointermove=canvas.onpointerdown=event=>{const rect=canvas.getBoundingClientRect(),width=Number(canvas.dataset.logicalWidth)||rect.width,x=(event.clientX-rect.left)/rect.width*width;const i=Math.max(0,Math.min(6,Math.floor((x-64)/((width-76)/7))));byId('chartDay').value=String(i);describeDay(i);};
-  byId('clearPlan').onclick=()=>{Object.assign(simulationState,{planId:null,phase:'idle',pending:null,message:''});document.querySelectorAll('.card-selection-status').forEach(el=>{if(el.closest('.solution-card').querySelector('[data-select]'))el.textContent='';});refreshImpact();};
+  byId('clearPlan').onclick=()=>{scenarioIds=[];chosenGuides.clear();Object.assign(simulationState,{planId:null,phase:'idle',pending:null,message:''});document.querySelectorAll('.card-selection-status').forEach(el=>{if(el.closest('.solution-card').querySelector('[data-select]'))el.textContent='';});refreshImpact();};
   const checkSource=()=>{if(!staleReport&&data.sourceWorkspace!==workspaceSnapshot()){staleReport=true;refreshImpact();}};
   window.addEventListener('storage',event=>{if(event.key===workspaceKey||event.key===null)checkSource();});window.addEventListener('focus',checkSource);
   window.addEventListener('resize',()=>{if(comparisonReady)drawChart();});
