@@ -1030,3 +1030,10 @@ html[data-view="results"] .hours-slider{width:100%;min-height:44px;padding:0;acc
 .scope-preview{font-size:14px;padding-top:12px;border-top:1px solid var(--border)}
 @media(max-width:800px){.group-items{grid-template-columns:1fr}.solution-group>summary{padding:16px}.scenario-builder{padding:16px}.solution-group>summary strong{font-size:17px}}
 @media(max-width:600px){html[data-view="entry"] .product-header .school-badge{width:36px!important;height:36px!important}.product-header .brand-title{font-size:18px!important}}
+.reference-library{border-top:1px solid var(--border);padding-top:32px;margin-top:48px;scroll-margin-top:140px}
+.reference-library h2{font-size:28px;margin:12px 0}.reference-intro{max-width:900px;color:var(--muted);line-height:1.7}
+.reference-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:24px 0}
+.reference-card,.reference-inputs{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:24px;min-width:0}
+.reference-library h3{font-size:18px;line-height:1.5;margin:8px 0 12px}.reference-library p{font-size:14px;line-height:1.75;overflow-wrap:anywhere}.reference-library a{color:var(--accent-text);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.reference-meta{font-weight:700;color:var(--muted)}.reference-library summary{cursor:pointer;min-height:44px;padding:10px 0;font-size:14px;font-weight:650}.reference-library details p{color:var(--muted)}
+@media(max-width:1000px){.reference-grid{grid-template-columns:1fr}.reference-card,.reference-inputs{padding:20px}}
