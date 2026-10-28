@@ -1007,3 +1007,26 @@ html[data-view="results"] .solution-detail{display:grid;grid-template-columns:mi
 .scenario-input-panel{border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:20px;min-width:0}.scenario-input-panel .solution-inputs{margin:0}.scenario-input-panel .solution-inputs h4{margin:0}.scenario-input-panel input{min-height:44px;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font:inherit}.scenario-input-panel .btn{border:1px solid var(--border);cursor:pointer}
 .solution-evidence{border-top:1px solid var(--border);padding-top:16px;margin-top:20px}.solution-evidence summary{min-height:36px;cursor:pointer;font-weight:650}.solution-evidence a{font-size:14px}.solution-evidence p{font-size:13px}.solution-evidence:not([open])>:not(summary){display:none}
 @media(max-width:800px){html[data-view="results"] .solution-detail{grid-template-columns:1fr;gap:24px}.solution-detail.entering-parameters .scenario-input-panel{order:-1}}
+/* Results refinement: clean branding and decision-first hierarchy. */
+html[data-view="entry"] .product-header .school-badge{display:grid!important;width:48px!important;height:48px!important;border:0!important;box-shadow:none!important;filter:none!important;background:transparent!important;border-radius:0!important;overflow:visible}
+html[data-view="entry"] .school-badge::before{display:none!important}
+html[data-view="entry"] .school-logo-img{object-fit:contain;border-radius:0!important;background:transparent!important;filter:none!important;opacity:1!important}
+html[data-view="entry"][data-theme="light"] .product-header{background:var(--surface);border-color:var(--border);box-shadow:0 4px 18px rgba(15,23,42,.04)}
+html[data-view="results"] .findings-grid{gap:16px}
+html[data-view="results"] .findings-grid article{padding:24px!important;border:1px solid var(--border)!important;border-radius:14px;background:var(--surface)}
+html[data-view="results"] .finding-label{display:block;font-size:16px;font-weight:800;line-height:1.5;letter-spacing:.025em;color:var(--foreground);margin-bottom:14px}
+html[data-view="results"] .findings-grid h3{font-size:17px;font-weight:600;color:var(--accent-text);margin:0 0 10px}
+html[data-view="results"] .solution-cards{display:block}
+.solution-group{border:1px solid var(--border);border-radius:14px;background:var(--surface);margin-bottom:16px;overflow:hidden}
+.solution-group>summary{padding:22px;cursor:pointer;line-height:1.6}
+.solution-group>summary strong{font-size:19px}.solution-group>summary span,.solution-group>summary small{display:block;font-size:14px;margin-top:6px;color:var(--muted)}
+.group-items{padding:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;background:var(--background)}
+html[data-view="results"] .group-items .solution-card{min-width:0;box-shadow:none;margin:0}
+html[data-view="results"] .group-items .solution-card h3{font-size:17px}
+html[data-view="results"] .solution-detail[hidden]{display:none!important}
+.scenario-builder{padding:24px;border:1px solid var(--border);border-radius:14px;margin:20px 0;background:var(--surface)}
+.scenario-builder h3{margin:0 0 12px}.scenario-builder p{font-size:14px;color:var(--muted);line-height:1.7}.scenario-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--border);font-size:14px}.scenario-item span{min-width:0;overflow-wrap:anywhere}.scenario-item button{flex:none}
+html[data-view="results"] .hours-slider{width:100%;min-height:44px;padding:0;accent-color:var(--primary);cursor:pointer}
+.scope-preview{font-size:14px;padding-top:12px;border-top:1px solid var(--border)}
+@media(max-width:800px){.group-items{grid-template-columns:1fr}.solution-group>summary{padding:16px}.scenario-builder{padding:16px}.solution-group>summary strong{font-size:17px}}
+@media(max-width:600px){html[data-view="entry"] .product-header .school-badge{width:36px!important;height:36px!important}.product-header .brand-title{font-size:18px!important}}
